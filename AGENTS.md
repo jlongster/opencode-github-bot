@@ -80,4 +80,4 @@ framework belongs in the finished project.
 - Primary exe.dev workspace copy: `/root/projects/opencode-github-bot` on
     `jamesbox.exe.xyz`.
 - Local staging copy: `/Users/james/projects/opencode-github-bot`.
-- No Git remote is configured yet.
+- Public repository: https://github.com/jlongster/opencode-github-bot (`origin`).

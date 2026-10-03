@@ -9,7 +9,9 @@ synthetic acceptance tests, the production build and a bundle smoke test.
 
 - Deployment target: exe.dev. Primary working directory:
     `/root/projects/opencode-github-bot` on `jamesbox.exe.xyz`.
-- No Git remote is configured.
+- Public repository: https://github.com/jlongster/opencode-github-bot. Published
+    as a fresh single-commit history; the earlier history (including the
+    Moldspoon import) is kept only in the local `moldspoon-history` branch.
 - Live on VM `opencode-github-bot` (exe.dev, NYC, 2 CPU / 8 GB / 25 GB) from
     `ghcr.io/anomalyco/devbox@sha256:182c7b242ab79c85bbe477dc7ea58574fca0865fcc3467faa627dc8a1140bb5b`
     (verified against the registry), with Bun 1.4.2 at `/usr/local/bin/bun`.
