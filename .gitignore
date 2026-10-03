@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+dist/
+coverage/
+.env*
+.dev.vars*
+.secrets/
+*.token
+*.secret
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+data/

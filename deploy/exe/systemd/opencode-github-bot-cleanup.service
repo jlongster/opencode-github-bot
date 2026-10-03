@@ -1,0 +1,34 @@
+[Unit]
+Description=OpenCode GitHub bot closed pull request workspace cleanup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/opencode-github-bot/current/dist/cleanup.mjs
+ConditionPathExists=/etc/opencode-github-bot/runtime.env
+
+[Service]
+Type=oneshot
+User=ghbot
+Group=ghbot
+EnvironmentFile=/etc/opencode-github-bot/runtime.env
+Environment=NODE_ENV=production
+Environment=HOME=/var/lib/opencode-github-bot
+WorkingDirectory=/var/lib/opencode-github-bot
+ExecStart=/usr/bin/node /srv/opencode-github-bot/current/dist/cleanup.mjs
+TimeoutStartSec=15min
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/opencode-github-bot
+InaccessiblePaths=-/workspaces

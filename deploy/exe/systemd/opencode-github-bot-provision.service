@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenCode GitHub bot workspace provisioning
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash /srv/opencode-github-bot/current/deploy/exe/provision.sh
+NoNewPrivileges=true
+UMask=0077

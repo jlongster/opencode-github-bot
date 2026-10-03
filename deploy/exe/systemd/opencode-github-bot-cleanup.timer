@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily cleanup of workspaces for pull requests closed over seven days
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

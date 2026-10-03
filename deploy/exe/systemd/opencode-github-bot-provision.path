@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenCode GitHub bot workspace provisioning and deletion requests
+
+[Path]
+PathExistsGlob=/var/lib/opencode-github-bot/workspace-requests/*.delete
+PathExistsGlob=/var/lib/opencode-github-bot/workspace-requests/*.request
+
+[Install]
+WantedBy=multi-user.target

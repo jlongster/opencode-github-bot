@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenCode GitHub bot workspace executor %i
+Requires=opencode-github-bot-workspace@%i.socket
+After=opencode-github-bot-workspace@%i.socket
+ConditionPathExists=/srv/opencode-github-bot/current/dist/workspace.mjs
+
+[Service]
+Type=simple
+User=ghb-%i
+Group=ghb-%i
+Environment=WORKSPACE_ROOT=/workspace
+Environment=HOME=/workspace
+WorkingDirectory=/workspace
+ExecStart=/usr/bin/node /srv/opencode-github-bot/current/dist/workspace.mjs
+BindPaths=/workspaces/%i:/workspace
+ReadWritePaths=/workspace
+InaccessiblePaths=/etc/opencode-github-bot /var/lib/opencode-github-bot -/run/opencode-github-bot-workspaces
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
