@@ -150,6 +150,7 @@ describe("body analysis", () => {
             "advertised",
             "maximum",
             "session",
+            "depth",
         ]);
         expect(
             duplicateTitleQueries(
@@ -290,14 +291,14 @@ describe("fact collection", () => {
                     title: "delegate depth not enforced",
                     state: "closed",
                     labels: ["core"],
-                    titleMatches: 5,
-                    titleScore: 2.5,
+                    titleMatches: 6,
+                    titleScore: 3,
                     errorMatch: true,
                 },
             ]);
             expect(
                 searches.filter((query) => query.includes("in:title")),
-            ).toHaveLength(5);
+            ).toHaveLength(6);
             expect(
                 searches.some((query) =>
                     query.includes(

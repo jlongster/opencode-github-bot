@@ -336,7 +336,7 @@ export const titleKeywords = (title: string) =>
         .split(/[^a-z0-9_.-]+/)
         .map((word) => word.replace(/^[.-]+|[.-]+$/g, ""))
         .filter((word) => word.length >= 3 && !STOPWORDS.has(word))
-        .slice(0, 6);
+        .slice(0, 8);
 
 /** `subagent` in `subagent: …`, `fix(tui)` in `fix(tui): …`. */
 export const titlePrefix = (title: string) =>
