@@ -106,6 +106,12 @@ export type FakeComment = {
 /** In-memory stand-in for the small GitHub REST surface the bot uses. */
 export const fakeGitHub = async () => {
     const comments: FakeComment[] = [];
+    /** Test-specific GET responses by path; they take precedence over built-in routes. */
+    const routes = new Map<string, (url: URL) => unknown>();
+    const tokenRequests: Array<{
+        repositories?: string[];
+        permissions?: Record<string, string>;
+    }> = [];
     const reviewParents = new Map<number, number | null>();
     /** Pull request and issue states by number (default: open). */
     const states = new Map<
@@ -116,6 +122,8 @@ export const fakeGitHub = async () => {
         dropNextPostResponse: false,
         hangPosts: false,
         failStateLookups: new Set<number>(),
+        /** Simulates GitHub granting more than was requested. */
+        extraTokenPermissions: {} as Record<string, string>,
         nextId: 9_000,
     };
     const readBody = (request: IncomingMessage) =>
@@ -133,14 +141,30 @@ export const fakeGitHub = async () => {
             response.end(JSON.stringify(value));
         };
         const body = await readBody(request);
+        const route =
+            request.method === "GET" ? routes.get(url.pathname) : undefined;
+        if (route) return send(200, route(url));
         if (
             request.method === "POST" &&
             /^\/app\/installations\/\d+\/access_tokens$/.test(url.pathname)
-        )
+        ) {
+            const requested = JSON.parse(body || "{}") as {
+                repositories?: string[];
+                permissions?: Record<string, string>;
+            };
+            tokenRequests.push(requested);
             return send(201, {
                 token: "fixture-installation-token",
                 expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+                permissions: {
+                    ...requested.permissions,
+                    ...state.extraTokenPermissions,
+                },
+                repositories: (requested.repositories ?? []).map((name) => ({
+                    full_name: `acme/${name}`,
+                })),
             });
+        }
         const single = url.pathname.match(
             /^\/repos\/[^/]+\/[^/]+\/pulls\/comments\/(\d+)$/,
         );
@@ -222,6 +246,8 @@ export const fakeGitHub = async () => {
     return {
         url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
         comments,
+        routes,
+        tokenRequests,
         reviewParents,
         states,
         state,

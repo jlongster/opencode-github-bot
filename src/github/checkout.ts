@@ -192,9 +192,7 @@ export const makeCheckout = (options: CheckoutOptions) => {
                               start: "refs/remotes/default",
                           })),
                       );
-            const token = yield* github.installationToken(
-                conversation.installationId,
-            );
+            const token = yield* github.installationToken(conversation);
             const mirror = join(
                 options.mirrorDirectory,
                 `${conversation.repositoryId}.git`,

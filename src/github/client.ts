@@ -24,12 +24,20 @@ export type GitHubOptions = {
 
 type Repo = { readonly installationId: number; readonly repository: string };
 
+/** Everything the bot does; the App itself may be granted far more. */
+export const TOKEN_PERMISSIONS: Readonly<Record<string, string>> = {
+    issues: "write",
+    pull_requests: "write",
+    contents: "read",
+    metadata: "read",
+};
+
 const MAX_LIST_PAGES = 10;
 const MAX_PARENT_DEPTH = 10;
 
 export const makeGitHub = (options: GitHubOptions) => {
     const now = options.now ?? Date.now;
-    const tokens = new Map<number, { token: string; expiresAt: number }>();
+    const tokens = new Map<string, { token: string; expiresAt: number }>();
 
     const request = (
         operation: string,
@@ -77,32 +85,53 @@ export const makeGitHub = (options: GitHubOptions) => {
             ),
         );
 
-    const installationToken = (installationId: number) =>
+    /**
+     * Installation tokens are limited to one repository and the minimum
+     * permissions, whatever the App's installation allows. A response granting
+     * anything else is rejected rather than used.
+     */
+    const installationToken = (repo: Repo) =>
         Effect.gen(function* () {
-            const cached = tokens.get(installationId);
+            const name = repo.repository.split("/")[1] ?? "";
+            const key = `${repo.installationId}:${repo.repository.toLowerCase()}`;
+            const cached = tokens.get(key);
             if (cached && cached.expiresAt - now() > 5 * 60_000)
                 return cached.token;
+            const failure = () =>
+                new GitHubError({
+                    status: null,
+                    operation: "installation-token",
+                });
             const value = yield* request(
                 "installation-token",
                 "POST",
-                `/app/installations/${installationId}/access_tokens`,
+                `/app/installations/${repo.installationId}/access_tokens`,
                 `Bearer ${appJwt(options.appId, options.privateKey, now())}`,
+                { repositories: [name], permissions: TOKEN_PERMISSIONS },
             );
             const decoded = yield* Schema.decodeUnknownEffect(
                 Schema.Struct({
                     token: Schema.String,
                     expires_at: Schema.String,
+                    permissions: Schema.Record(Schema.String, Schema.String),
+                    repositories: Schema.Array(
+                        Schema.Struct({ full_name: Schema.String }),
+                    ),
                 }),
-            )(value).pipe(
-                Effect.mapError(
-                    () =>
-                        new GitHubError({
-                            status: null,
-                            operation: "installation-token",
-                        }),
-                ),
-            );
-            tokens.set(installationId, {
+            )(value).pipe(Effect.mapError(failure));
+            const granted = Object.entries(decoded.permissions);
+            if (
+                granted.length !== Object.keys(TOKEN_PERMISSIONS).length ||
+                granted.some(
+                    ([permission, level]) =>
+                        TOKEN_PERMISSIONS[permission] !== level,
+                ) ||
+                decoded.repositories.length !== 1 ||
+                decoded.repositories[0]?.full_name.toLowerCase() !==
+                    repo.repository.toLowerCase()
+            )
+                return yield* Effect.fail(failure());
+            tokens.set(key, {
                 token: decoded.token,
                 expiresAt: Date.parse(decoded.expires_at),
             });
@@ -115,12 +144,26 @@ export const makeGitHub = (options: GitHubOptions) => {
         method: "GET" | "POST",
         path: string,
         body?: unknown,
-    ) =>
-        installationToken(repo.installationId).pipe(
+    ) => {
+        const attempt = installationToken(repo).pipe(
             Effect.flatMap((token) =>
                 request(operation, method, path, `Bearer ${token}`, body),
             ),
         );
+        // A cached token GitHub rejects early (e.g. after suspension) is
+        // dropped and replaced once.
+        return attempt.pipe(
+            Effect.catchIf(
+                (error) => error.status === 401,
+                () =>
+                    Effect.sync(() =>
+                        tokens.delete(
+                            `${repo.installationId}:${repo.repository.toLowerCase()}`,
+                        ),
+                    ).pipe(Effect.andThen(attempt)),
+            ),
+        );
+    };
 
     const decodeId = (operation: string) => (value: unknown) =>
         Schema.decodeUnknownEffect(Schema.Struct({ id: Schema.Int }))(
@@ -139,6 +182,33 @@ export const makeGitHub = (options: GitHubOptions) => {
 
     return {
         installationToken,
+
+        /** The App's installation for a repository (App JWT; no installation token). */
+        repositoryInstallation: (repository: string) =>
+            request(
+                "repository-installation",
+                "GET",
+                `/repos/${repository}/installation`,
+                `Bearer ${appJwt(options.appId, options.privateKey, now())}`,
+            ).pipe(
+                Effect.flatMap(
+                    Schema.decodeUnknownEffect(
+                        Schema.Struct({ id: Schema.Int }),
+                    ),
+                ),
+                Effect.map((installation) => installation.id),
+                Effect.mapError((error) =>
+                    error instanceof GitHubError
+                        ? error
+                        : new GitHubError({
+                              status: null,
+                              operation: "repository-installation",
+                          }),
+                ),
+            ),
+
+        /** Read-only GET with a repository-restricted token, for fact collection. */
+        getJson: (repo: Repo, path: string) => api(repo, "get", "GET", path),
 
         /** Follows `in_reply_to_id` from a review comment to its thread root. */
         reviewThreadRoot: (repo: Repo, commentId: number) =>

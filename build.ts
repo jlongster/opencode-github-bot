@@ -56,6 +56,16 @@ const cleanup = await Bun.build({
 for (const log of cleanup.logs) console.error(log);
 if (!cleanup.success) throw new Error("cleanup build failed");
 
+const triageFacts = await Bun.build({
+    entrypoints: [new URL("./src/triage/collect.ts", import.meta.url).pathname],
+    outdir: output,
+    target: "node",
+    naming: "triage-facts.mjs",
+    plugins: [jsoncEsm],
+});
+for (const log of triageFacts.logs) console.error(log);
+if (!triageFacts.success) throw new Error("triage facts build failed");
+
 const importer = await Bun.build({
     entrypoints: [
         new URL("./src/admin/import-credential.ts", import.meta.url).pathname,
