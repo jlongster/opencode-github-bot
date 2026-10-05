@@ -291,6 +291,7 @@ describe("fact collection", () => {
                     state: "closed",
                     labels: ["core"],
                     titleMatches: 5,
+                    titleScore: 2.5,
                     errorMatch: true,
                 },
             ]);
@@ -320,6 +321,60 @@ describe("fact collection", () => {
                 ]),
             );
             expect(github.comments).toEqual([]);
+        } finally {
+            await github.close();
+        }
+    });
+
+    it("ranks matches from specific title searches above generic ones", async () => {
+        const github = await fakeGitHub();
+        try {
+            github.routes.set(`/repos/${REPO}/issues/9`, () =>
+                issueJson({
+                    title: "delegate: tool depth",
+                    body: "No errors.",
+                }),
+            );
+            github.routes.set(`/repos/${REPO}/issues/9/comments`, () => []);
+            github.routes.set("/search/issues", (url) => {
+                const query = url.searchParams.get("q") ?? "";
+                if (query.includes("author:"))
+                    return { total_count: 0, items: [] };
+                // "delegate tool" is generic (300 results); "delegate depth" is specific (3).
+                return query.endsWith("delegate depth")
+                    ? {
+                          total_count: 3,
+                          items: [
+                              {
+                                  number: 100,
+                                  title: "delegate depth limit",
+                                  state: "open",
+                                  labels: [],
+                              },
+                          ],
+                      }
+                    : {
+                          total_count: 300,
+                          items: [
+                              {
+                                  number: 200,
+                                  title: "delegate tool output",
+                                  state: "open",
+                                  labels: [],
+                              },
+                          ],
+                      };
+            });
+            const facts = await run(github, 9);
+            expect(
+                facts.duplicateCandidates.map((candidate) => [
+                    candidate.number,
+                    candidate.titleScore,
+                ]),
+            ).toEqual([
+                [100, 0.333],
+                [200, 0.003],
+            ]);
         } finally {
             await github.close();
         }

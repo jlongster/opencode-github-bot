@@ -90,6 +90,11 @@ export type DuplicateCandidate = {
     readonly labels: ReadonlyArray<string>;
     /** How many of the two-word title searches found it. */
     readonly titleMatches: number;
+    /**
+     * Sum over matching title searches of 1 / that search's total results:
+     * matches from specific searches outweigh generic ones.
+     */
+    readonly titleScore: number;
     /** Found by searching for the item's first error line verbatim. */
     readonly errorMatch: boolean;
 };
@@ -562,10 +567,19 @@ export const collectFacts = Effect.fnUntraced(function* (input: {
                 state: item.state,
                 labels: item.labels.map((label) => label.name),
                 titleMatches: 0,
+                titleScore: 0,
                 errorMatch: false,
             };
             if (search.error) candidate.errorMatch = true;
-            else candidate.titleMatches += 1;
+            else {
+                candidate.titleMatches += 1;
+                candidate.titleScore =
+                    Math.round(
+                        (candidate.titleScore +
+                            1 / Math.max(1, result?.total_count ?? 1)) *
+                            1000,
+                    ) / 1000;
+            }
             candidates.set(item.number, candidate);
         }
     }
@@ -573,7 +587,7 @@ export const collectFacts = Effect.fnUntraced(function* (input: {
         .sort(
             (a, b) =>
                 Number(b.errorMatch) - Number(a.errorMatch) ||
-                b.titleMatches - a.titleMatches ||
+                b.titleScore - a.titleScore ||
                 b.number - a.number,
         )
         .slice(0, MAX_CANDIDATES);
