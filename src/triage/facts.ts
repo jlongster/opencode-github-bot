@@ -88,11 +88,15 @@ export type DuplicateCandidate = {
     readonly title: string;
     readonly state: string;
     readonly labels: ReadonlyArray<string>;
-    readonly matchedBy: ReadonlyArray<"title" | "error">;
+    /** How many of the two-word title searches found it. */
+    readonly titleMatches: number;
+    /** Found by searching for the item's first error line verbatim. */
+    readonly errorMatch: boolean;
 };
 
 const MAX_FILES = 300;
 const MAX_ERROR_LINES = 5;
+const MAX_CANDIDATES = 8;
 const STOPWORDS = new Set(
     "a an and are as at be but by can cannot could do does doesn for from has have how if in into is it its not of on or should so that the then this to was when where which while with without after before still when opencode open code issue bug error fails failed feature request".split(
         " ",
@@ -216,18 +220,7 @@ export const analyzeBody = (
         ].map((m) => m[1] as string),
     );
 
-    const errorLines = unique(
-        body
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter((line) =>
-                /\b(error|exception|failed|failure|panic|traceback|cannot|unable)\b/i.test(
-                    line,
-                ),
-            )
-            .filter((line) => !line.startsWith("#") && !line.startsWith("http"))
-            .map((line) => line.slice(0, 300)),
-    ).slice(0, MAX_ERROR_LINES);
+    const errorLines = extractErrorLines(body);
 
     return {
         length: body.length,
@@ -268,6 +261,68 @@ export const analyzeBody = (
     };
 };
 
+const ERROR_LIKE =
+    /\b(error|exception|failed|failure|panic|fatal|traceback|denied|refused|timed? ?out|not found|limit reached)\b/i;
+const ERROR_START =
+    /^(?:[\w.]*(?:Error|Exception)\b|error\b|panic:|fatal:|Traceback\b|Uncaught\b|ERR!|E\d{3,}\b)/i;
+
+/**
+ * Error output quoted in a body: lines from fenced code blocks (error-like
+ * lines first, otherwise each text/log block's first line) and lines outside
+ * code that start like an error. Ordinary prose is ignored.
+ */
+export const extractErrorLines = (body: string) => {
+    const fromCode: string[] = [];
+    const firstLines: string[] = [];
+    const fromProse: string[] = [];
+    let fence: string | null = null;
+    let blockFirst = true;
+    for (const raw of body.split(/\r?\n/)) {
+        const line = raw.trim();
+        const marker = /^(```|~~~)\s*([\w+-]*)/.exec(line);
+        if (marker) {
+            if (fence === null) {
+                fence = (marker[2] ?? "").toLowerCase();
+                blockFirst = true;
+            } else fence = null;
+            continue;
+        }
+        if (!line) continue;
+        if (fence !== null) {
+            const outputBlock = [
+                "",
+                "text",
+                "txt",
+                "log",
+                "console",
+                "shell",
+                "sh",
+                "bash",
+                "plaintext",
+            ].includes(fence);
+            if (ERROR_LIKE.test(line) || ERROR_START.test(line))
+                fromCode.push(line);
+            else if (blockFirst && outputBlock) firstLines.push(line);
+            blockFirst = false;
+        } else if (ERROR_START.test(line)) fromProse.push(line);
+    }
+    return unique(
+        [...fromCode, ...fromProse, ...firstLines].map((line) =>
+            line.slice(0, 300),
+        ),
+    ).slice(0, MAX_ERROR_LINES);
+};
+
+/**
+ * Small two-word title searches: the leading keyword paired with each other
+ * keyword. GitHub search requires every word, so one long query rarely
+ * matches anything but the item itself.
+ */
+export const duplicateTitleQueries = (title: string) => {
+    const [anchor, ...rest] = titleKeywords(title);
+    return anchor ? rest.map((word) => `${anchor} ${word}`) : [];
+};
+
 /** Searchable keywords from a title, most specific words first in title order. */
 export const titleKeywords = (title: string) =>
     title
@@ -276,7 +331,7 @@ export const titleKeywords = (title: string) =>
         .split(/[^a-z0-9_.-]+/)
         .map((word) => word.replace(/^[.-]+|[.-]+$/g, ""))
         .filter((word) => word.length >= 3 && !STOPWORDS.has(word))
-        .slice(0, 5);
+        .slice(0, 6);
 
 /** `subagent` in `subagent: …`, `fix(tui)` in `fix(tui): …`. */
 export const titlePrefix = (title: string) =>
@@ -475,45 +530,53 @@ export const collectFacts = Effect.fnUntraced(function* (input: {
 
     const body = analyzeBody(input.repository, issue.title, issue.body);
 
-    // Duplicate candidates: title keywords, and the first error line verbatim.
-    const keywords = titleKeywords(issue.title);
-    const searches: Array<[DuplicateCandidate["matchedBy"][number], string]> =
-        [];
-    if (keywords.length >= 2)
-        searches.push([
-            "title",
-            `repo:${input.repository} is:issue in:title ${keywords.join(" ")}`,
-        ]);
+    // Duplicate candidates: small title searches and the first error line verbatim.
+    const searches: Array<{ readonly error: boolean; readonly query: string }> =
+        duplicateTitleQueries(issue.title).map((terms) => ({
+            error: false,
+            query: `repo:${input.repository} is:issue in:title ${terms}`,
+        }));
     const errorPhrase = body.errorLines[0]
         ?.replace(/["`]/g, "")
         .slice(0, 100)
         .trim();
     if (errorPhrase && errorPhrase.length >= 20)
-        searches.push([
-            "error",
-            `repo:${input.repository} is:issue "${errorPhrase}"`,
-        ]);
+        searches.push({
+            error: true,
+            query: `repo:${input.repository} is:issue "${errorPhrase}"`,
+        });
     const candidates = new Map<
         number,
-        DuplicateCandidate & { matchedBy: Array<"title" | "error"> }
+        { -readonly [K in keyof DuplicateCandidate]: DuplicateCandidate[K] }
     >();
-    for (const [matchedBy, query] of searches) {
-        const result = yield* optional(get(SearchJson, searchPath(query, 10)));
+    for (const search of searches) {
+        const result = yield* optional(
+            get(SearchJson, searchPath(search.query, 10)),
+        );
         for (const item of result?.items ?? []) {
             if (item.number === input.number || item.pull_request !== undefined)
                 continue;
-            const existing = candidates.get(item.number);
-            if (existing) existing.matchedBy.push(matchedBy);
-            else
-                candidates.set(item.number, {
-                    number: item.number,
-                    title: item.title,
-                    state: item.state,
-                    labels: item.labels.map((label) => label.name),
-                    matchedBy: [matchedBy],
-                });
+            const candidate = candidates.get(item.number) ?? {
+                number: item.number,
+                title: item.title,
+                state: item.state,
+                labels: item.labels.map((label) => label.name),
+                titleMatches: 0,
+                errorMatch: false,
+            };
+            if (search.error) candidate.errorMatch = true;
+            else candidate.titleMatches += 1;
+            candidates.set(item.number, candidate);
         }
     }
+    const duplicateCandidates = [...candidates.values()]
+        .sort(
+            (a, b) =>
+                Number(b.errorMatch) - Number(a.errorMatch) ||
+                b.titleMatches - a.titleMatches ||
+                b.number - a.number,
+        )
+        .slice(0, MAX_CANDIDATES);
 
     const commentList = comments ?? [];
     return {
@@ -567,6 +630,6 @@ export const collectFacts = Effect.fnUntraced(function* (input: {
         },
         body,
         pull,
-        duplicateCandidates: [...candidates.values()],
+        duplicateCandidates,
     } satisfies ItemFacts;
 });

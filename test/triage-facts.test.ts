@@ -5,6 +5,8 @@ import {
     analyzeBody,
     closingReferences,
     collectFacts,
+    duplicateTitleQueries,
+    extractErrorLines,
     isDocsPath,
     isTestPath,
     packageOf,
@@ -18,7 +20,7 @@ const REPO = "acme/widgets";
 const freeFormBug = [
     "## Summary",
     "",
-    "Child sessions still see the `delegate` tool at the depth limit.",
+    "Child sessions still see the `delegate` tool at the depth limit. Workers prepare calls that cannot succeed, and this failed before.",
     "",
     "## Environment",
     "",
@@ -98,7 +100,9 @@ describe("body analysis", () => {
         expect(facts.references.codePaths).toEqual([
             "packages/core/src/tool/delegate.ts",
         ]);
+        // Quoted output only; prose that merely mentions failure is ignored.
         expect(facts.errorLines).toEqual([
+            "Delegate depth limit reached (1). Increase the limit to allow nesting.",
             "Error: delegation failed for worker",
         ]);
     });
@@ -139,7 +143,24 @@ describe("body analysis", () => {
             titleKeywords(
                 "delegate: tool remains advertised at the maximum session depth",
             ),
-        ).toEqual(["delegate", "tool", "remains", "advertised", "maximum"]);
+        ).toEqual([
+            "delegate",
+            "tool",
+            "remains",
+            "advertised",
+            "maximum",
+            "session",
+        ]);
+        expect(
+            duplicateTitleQueries(
+                "delegate: tool remains at the maximum depth",
+            ),
+        ).toEqual([
+            "delegate tool",
+            "delegate remains",
+            "delegate maximum",
+            "delegate depth",
+        ]);
         expect(titleKeywords("[FEATURE]: Add dark mode to TUI")).toEqual([
             "add",
             "dark",
@@ -163,6 +184,11 @@ describe("body analysis", () => {
         expect(
             closingReferences("Fixes #12, closes #34 and mentions #56"),
         ).toEqual([12, 34]);
+        expect(
+            extractErrorLines(
+                "It cannot start.\nTypeError: x is undefined\n```ts\nconst a = 1;\n```",
+            ),
+        ).toEqual(["TypeError: x is undefined"]);
     });
 });
 
@@ -264,12 +290,18 @@ describe("fact collection", () => {
                     title: "delegate depth not enforced",
                     state: "closed",
                     labels: ["core"],
-                    matchedBy: ["title", "error"],
+                    titleMatches: 5,
+                    errorMatch: true,
                 },
             ]);
             expect(
+                searches.filter((query) => query.includes("in:title")),
+            ).toHaveLength(5);
+            expect(
                 searches.some((query) =>
-                    query.includes('"Error: delegation failed for worker"'),
+                    query.includes(
+                        '"Delegate depth limit reached (1). Increase the limit to allow nesting."',
+                    ),
                 ),
             ).toBe(true);
             // Every token was restricted to the one repository and minimal permissions.
