@@ -32,9 +32,20 @@ export const reviewConversationKey = (
 export const workspaceId = (conversationKey: string) =>
     createHash("sha256").update(conversationKey).digest("hex").slice(0, 20);
 
-// Simpler and faster than a regular expression.
-export const mentions = (body: string, appSlug: string) =>
-    body.includes(`@${appSlug}`);
+const mentionPatterns = new Map<string, RegExp>();
+
+// The pattern is built once per app slug instead of on every comment.
+export const mentions = (body: string, appSlug: string) => {
+    let pattern = mentionPatterns.get(appSlug);
+    if (!pattern) {
+        pattern = new RegExp(
+            `(^|[^A-Za-z0-9_-])@${appSlug.replace(/[-]/g, "\\-")}(?![A-Za-z0-9_-])`,
+            "i",
+        );
+        mentionPatterns.set(appSlug, pattern);
+    }
+    return pattern.test(body);
+};
 
 export type BotIdentity = {
     readonly appSlug: string;
