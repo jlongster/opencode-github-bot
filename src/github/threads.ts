@@ -32,11 +32,9 @@ export const reviewConversationKey = (
 export const workspaceId = (conversationKey: string) =>
     createHash("sha256").update(conversationKey).digest("hex").slice(0, 20);
 
+// Simpler and faster than a regular expression.
 export const mentions = (body: string, appSlug: string) =>
-    new RegExp(
-        `(^|[^A-Za-z0-9_-])@${appSlug.replace(/[-]/g, "\\-")}(?![A-Za-z0-9_-])`,
-        "i",
-    ).test(body);
+    body.includes(`@${appSlug}`);
 
 export type BotIdentity = {
     readonly appSlug: string;
