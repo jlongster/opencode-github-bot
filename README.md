@@ -40,3 +40,4 @@ deploy/exe/                 systemd units, host setup and release script
 
 See [docs/architecture.md](docs/architecture.md) and
 [docs/operations.md](docs/operations.md).
+// staging effect test
