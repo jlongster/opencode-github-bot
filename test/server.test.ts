@@ -13,7 +13,7 @@ import {
     tempDirectory,
 } from "./support";
 
-it("serves health and accepts only signed webhooks over HTTP", async () => {
+it("serves health, version, and accepts only signed webhooks over HTTP", async () => {
     await using directory = await tempDirectory();
     const github = await fakeGitHub();
     try {
@@ -26,6 +26,13 @@ it("serves health and accepts only signed webhooks over HTTP", async () => {
                     fetch(`${origin}/health`),
                 );
                 expect(health.status).toBe(200);
+                const version = yield* Effect.promise(() =>
+                    fetch(`${origin}/version`),
+                );
+                expect(version.status).toBe(200);
+                expect(yield* Effect.promise(() => version.text())).toBe(
+                    "0.0.0",
+                );
 
                 const request = signed(
                     "issue_comment",

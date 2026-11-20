@@ -4,6 +4,7 @@ import {
     HttpRouter,
     HttpServerResponse,
 } from "effect/unstable/http";
+import packageJson from "../package.json" with { type: "json" };
 import { Repository } from "./conversations/repository";
 import { Conversations } from "./conversations/service";
 import { verifyWebhookSignature } from "./github/auth";
@@ -11,6 +12,8 @@ import { decodeCommentEvent } from "./github/events";
 import { type BotIdentity, ignoredReason } from "./github/threads";
 
 const MAX_WEBHOOK_BYTES = 5 * 1024 * 1024;
+const VERSION =
+    (packageJson as { readonly version?: string }).version ?? "0.0.0";
 
 export class WebhookSettings extends Context.Service<
     WebhookSettings,
@@ -71,6 +74,7 @@ export const routes = HttpRouter.use((router) =>
             WebhookSettings | Repository | Conversations
         >();
         yield* router.add("GET", "/health", HttpServerResponse.text("ok"));
+        yield* router.add("GET", "/version", HttpServerResponse.text(VERSION));
         yield* router.add("POST", "/github/webhook", (request) =>
             Effect.gen(function* () {
                 const body = yield* request.arrayBuffer;
