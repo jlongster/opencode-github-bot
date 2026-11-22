@@ -329,14 +329,16 @@ export const duplicateTitleQueries = (title: string) => {
 };
 
 /** Searchable keywords from a title, most specific words first in title order. */
-export const titleKeywords = (title: string) =>
-    title
-        .replace(/^\[[^\]]*\]:?\s*/, "")
-        .toLowerCase()
-        .split(/[^a-z0-9_.-]+/)
-        .map((word) => word.replace(/^[.-]+|[.-]+$/g, ""))
-        .filter((word) => word.length >= 3 && !STOPWORDS.has(word))
-        .slice(0, 8);
+export const titleKeywords = (title: string) => [
+    ...new Set(
+        title
+            .replace(/^\[[^\]]*\]:?\s*/, "")
+            .toLowerCase()
+            .split(/[^a-z0-9_.-]+/)
+            .map((word) => word.replace(/^[.-]+|[.-]+$/g, ""))
+            .filter((word) => word.length >= 3 && !STOPWORDS.has(word)),
+    ),
+].slice(0, 8);
 
 /** `subagent` in `subagent: …`, `fix(tui)` in `fix(tui): …`. */
 export const titlePrefix = (title: string) =>
