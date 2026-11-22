@@ -168,6 +168,11 @@ describe("body analysis", () => {
             "mode",
             "tui",
         ]);
+        expect(titleKeywords("crash on start, crash again")).toEqual([
+            "crash",
+            "start",
+            "again",
+        ]);
         expect(titlePrefix("subagent: tool remains advertised")).toBe(
             "subagent",
         );
